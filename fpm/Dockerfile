@@ -1,129 +1,46 @@
 # Base image, official docker PHP image
-FROM php:7.0-fpm
+FROM php:fpm
 
-############################################################################
-#### This installes following extensions:                               ####
-############################################################################
-#### - pgsql                                                            ####
-#### - iconv                                                            ####
-#### - intl                                                             ####
-#### - redis                                                            ####
-#### - apcu                                                             ####
-#### - apc-bc                                                           ####
-#### - sockets                                                          ####
-#### - memcached                                                        ####
-#### - imagick                                                          ####
-############################################################################
-
-# default PHP config
-RUN if [ -f /usr/local/etc/php/php.ini ]; then rm /usr/local/etc/php/php.ini; fi
-COPY ["config/php.ini", "/usr/local/etc/php/"]
+# change sources.list to faster mirror
+ADD sources.list /etc/apt/sources.list
 
 # Install dependencies
-RUN apt-get update\
-  && apt-get install -my --no-install-recommends\
-  # intl dependencies
-  zlib1g-dev libicu-dev g++\
-  # mcrypt dependencies
-  libmcrypt-dev\
-  # Postgres
-  libpq-dev\
-  # SQLite
-  #libsqlite3-dev\
-  # ImageMagick
-  libmagickwand-dev\
-  imagemagick\
-  # Memcached
-  libmemcached-dev\
-  # Event
-  libevent-dev\
-  openssl
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  g++ \
+  libfreetype6-dev \
+  libicu-dev \
+  libjpeg62-turbo-dev \
+  libmcrypt-dev \
+  libmemcached-dev \
+  libpng12-dev \
+  zlib1g-dev
 
+# zlib1g-dev libicu-dev g++ for intl dependencies
 
 # Install basic extensions
-RUN docker-php-ext-install sockets mcrypt iconv
-
-# Install intl extensions
-RUN docker-php-ext-configure intl\
-  && docker-php-ext-install intl
-
-# Install postgres extension
-RUN docker-php-ext-configure pdo_pgsql\
-  && docker-php-ext-install pdo_pgsql
-
-# Install event extension
-ADD https://pecl.php.net/get/event-2.0.3.tgz /tmp/event.tar.gz
-RUN mkdir -p /usr/src/php/ext/event\
-  && tar xf /tmp/event.tar.gz -C /usr/src/php/ext/event --strip-components=1
-
-RUN rm -rd /usr/src/php/ext/event && rm /tmp/event.tar.gz
+RUN docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/ \
+        && docker-php-ext-install -j$(nproc) gd iconv intl mbstring mcrypt mysqli pdo_mysql zip
 
 # Install redis extension
-ADD https://github.com/phpredis/phpredis/archive/php7.tar.gz /tmp/phpredis.tar.gz
-RUN mkdir -p /usr/src/php/ext/redis\
-  && tar xf /tmp/phpredis.tar.gz -C /usr/src/php/ext/redis --strip-components=1
-
-# configure and install
-RUN docker-php-ext-configure redis\
-  && docker-php-ext-install redis
-# cleanup
-RUN rm -rd /usr/src/php/ext/redis && rm /tmp/phpredis.tar.gz
-
-# Install imagick extension
-ADD https://github.com/mkoppanen/imagick/archive/phpseven.tar.gz /tmp/phpimagick.tar.gz
-RUN mkdir -p /usr/src/php/ext/imagick\
-  && tar xf /tmp/phpimagick.tar.gz -C /usr/src/php/ext/imagick --strip-components=1
-
-# configure and install
-RUN docker-php-ext-configure imagick\
-  && docker-php-ext-install imagick
-# cleanup
-RUN rm -rd /usr/src/php/ext/imagick && rm /tmp/phpimagick.tar.gz
+# ADD https://github.com/phpredis/phpredis/archive/php7.tar.gz /tmp/redis.tar.gz
+COPY redis.tar.gz /tmp/redis.tar.gz
+RUN mkdir -p /usr/src/php/ext/redis \
+  && tar xf /tmp/redis.tar.gz -C /usr/src/php/ext/redis --strip-components=1 \
+  && docker-php-ext-configure redis \
+  && docker-php-ext-install -j$(nproc) redis \
+  && rm -rd /usr/src/php/ext/redis \
+  && rm /tmp/redis.tar.gz
 
 # Install memcached extension
-
-ADD https://github.com/php-memcached-dev/php-memcached/archive/php7.tar.gz /tmp/phpmemcached.tar.gz
+# ADD https://github.com/php-memcached-dev/php-memcached/archive/php7.tar.gz /tmp/memcached.tar.gz
+COPY memcached.tar.gz /tmp/memcached.tar.gz
 RUN mkdir -p /usr/src/php/ext/memcached\
-  && tar xf /tmp/phpmemcached.tar.gz -C /usr/src/php/ext/memcached --strip-components=1
-
-# configure and install
-RUN docker-php-ext-configure memcached\
-  && docker-php-ext-install memcached
-
-# cleanup
-RUN rm -rd /usr/src/php/ext/memcached && rm /tmp/phpmemcached.tar.gz
-
-# Install APCu extension
-ADD https://pecl.php.net/get/apcu-5.1.3.tgz /tmp/apcu.tar.gz
-RUN mkdir -p /usr/src/php/ext/apcu\
-  && tar xf /tmp/apcu.tar.gz -C /usr/src/php/ext/apcu --strip-components=1
-
-# configure and install
-RUN docker-php-ext-configure apcu\
-  && docker-php-ext-install apcu
-
-RUN rm -rd /usr/src/php/ext/apcu && rm /tmp/apcu.tar.gz
-
-# Install APCu-BC extension
-ADD https://pecl.php.net/get/apcu_bc-1.0.3.tgz /tmp/apcu_bc.tar.gz
-RUN mkdir -p /usr/src/php/ext/apcu-bc\
-  && tar xf /tmp/apcu_bc.tar.gz -C /usr/src/php/ext/apcu-bc --strip-components=1
-
-# configure and install
-RUN docker-php-ext-configure apcu-bc\
-  && docker-php-ext-install apcu-bc
-
-RUN rm -rd /usr/src/php/ext/apcu-bc && rm /tmp/apcu_bc.tar.gz
-
-#Load APCU.ini before APC.ini
-RUN rm /usr/local/etc/php/conf.d/docker-php-ext-apcu.ini
-RUN echo extension=apcu.so > /usr/local/etc/php/conf.d/20-php-ext-apcu.ini
-
-RUN rm /usr/local/etc/php/conf.d/docker-php-ext-apc.ini
-RUN echo extension=apc.so > /usr/local/etc/php/conf.d/21-php-ext-apc.ini
+  && tar xf /tmp/memcached.tar.gz -C /usr/src/php/ext/memcached --strip-components=1 \
+  && docker-php-ext-configure memcached \
+  && docker-php-ext-install -j$(nproc) memcached \
+  && rm -rd /usr/src/php/ext/memcached \
+  && rm /tmp/memcached.tar.gz
 
 VOLUME ["/usr/local/etc"]
-
-RUN usermod -u 1000 www-data
 
 EXPOSE 9000

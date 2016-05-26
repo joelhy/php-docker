@@ -1,52 +1,39 @@
-fpm:
-  build: "./fpm"
-  ports:
-    - "9000:9000"
-  links:
-    - postgres:postgres
-    - memcached:memcached
-    - redis:redis
-    - beanstalkd:beanstalkd
-    - mailcatcher:mailcatcher
-  volumes:
-    - $PWD/app:/var/www/app
+version: "2"
 
-nginx:
-  build: "./nginx"
-  ports:
-    - "80:80"
-    - "443:443"
-  links:
-    - fpm
-  volumes:
-    - $PWD/app:/var/www/app
-    - $PWD/nginx/sites-enabled:/etc/nginx/sites-enabled
+services:
+  fpm:
+    # build: "./fpm"
+    image: joelhy/fpm
+    volumes:
+      - ./app:/var/www/app
 
-postgres:
-  image: postgres
-  ports:
-    - "5432:5432"
-  environment:
-    POSTGRES_PASSWORD: password
+  nginx:
+    build: "./nginx"
+    ports:
+      - "8080:80"
+      - "443:443"
+    volumes:
+      - ./app:/var/www/app
+      - ./nginx/sites-enabled:/etc/nginx/sites-enabled
 
-memcached:
-  image: memcached
-  ports:
-    - "11211:11211"
+  mysql:
+    # mariadb use less meory than mysql: 258 MB vs. 429.2 MB
+    image: mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+    volumes:
+      - mysql-data:/var/lib/mysql
 
-redis:
-  image: redis
-  ports:
-    - "6379:6379"
+  memcached:
+    image: memcached
 
-beanstalkd:
-  build: "./beanstalkd"
-  ports:
-    - "11300:11300"
+  redis:
+    image: redis
+    volumes:
+      - redis-data:/var/lib/redis
 
-mailcatcher:
-  build: "./mailcatcher"
-  ports:
-    - "1025:1025"
-    - "1080:1080"
-  command: mailcatcher -f --ip=0.0.0.0
+volumes:
+  redis-data:
+    driver: local
+  mysql-data:
+    driver: local
